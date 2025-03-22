@@ -1,8 +1,11 @@
 pipeline {
     agent any
+
     environment {
-        DOCKER_IMAGE = "poojaelango/docker-app:latest"  // Change this to your registry
-        CONTAINER_NAME = "docker-running-app-1"
+        FRONTEND_IMAGE = "poojaelango/frontend-app:latest"
+        BACKEND_IMAGE = "poojaelango/backend-app:latest"
+        FRONTEND_CONTAINER = "frontend-container"
+        BACKEND_CONTAINER = "backend-container"
         REGISTRY_CREDENTIALS = "docker"  // Jenkins credentials ID
     }
 
@@ -15,9 +18,16 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Images') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE .'
+                script {
+                    dir('frontend') {
+                        sh 'docker build -t $FRONTEND_IMAGE .'
+                    }
+                    dir('backend') {
+                        sh 'docker build -t $BACKEND_IMAGE .'
+                    }
+                }
             }
         }
 
@@ -29,38 +39,42 @@ pipeline {
             }
         }
 
-        stage('Push to Container Registry') {
+        stage('Push Docker Images') {
             steps {
-                sh 'docker push $DOCKER_IMAGE'
+                sh 'docker push $FRONTEND_IMAGE'
+                sh 'docker push $BACKEND_IMAGE'
             }
         }
 
-        stage('Stop & Remove Existing Container') {
+        stage('Stop & Remove Existing Containers') {
             steps {
                 script {
                     sh '''
-                    if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
-                        docker stop $CONTAINER_NAME || true
-                        docker rm $CONTAINER_NAME || true
-                    fi
+                    for container in $FRONTEND_CONTAINER $BACKEND_CONTAINER; do
+                        if [ "$(docker ps -aq -f name=$container)" ]; then
+                            docker stop $container || true
+                            docker rm $container || true
+                        fi
+                    done
                     '''
                 }
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Run Docker Containers') {
             steps {
-                sh 'docker run -d -p 5001:5000 --name $CONTAINER_NAME $DOCKER_IMAGE'
+                sh 'docker run -d -p 3000:3000 --name $FRONTEND_CONTAINER $FRONTEND_IMAGE'
+                sh 'docker run -d -p 5000:5000 --name $BACKEND_CONTAINER $BACKEND_IMAGE'
             }
         }
     }
 
     post {
         success {
-            echo "Build, push, and container execution successful!"
+            echo "Frontend and Backend: Build, push, and container execution successful!"
         }
         failure {
-            echo "Build or container execution failed."
+            echo "One or more stages failed."
         }
     }
 }
